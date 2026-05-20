@@ -360,6 +360,14 @@ reports/
 
 ---
 
+## 🐳 Docker
+
+For detailed Docker setup, build and deployment instructions see [DOCKER.md](DOCKER.md).
+
+or just use mydoidfortest/dochandler:latest as image if you don't want to build the dockerimage
+
+---
+
 ## 📝 License
 
 MIT License — feel free to use and adapt for your own Paperless-NGX setup.

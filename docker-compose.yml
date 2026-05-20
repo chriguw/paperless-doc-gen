@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  dochandler:
+    image: yourusername/dochandler:latest
+    container_name: dochandler
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - PAPERLESS_URL=http://webserver:8000
+      - PAPERLESS_TOKEN=your-api-token-here
+    volumes:
+      - /Users/yourpath/paperless/data/paperless/consume:/app/reports  # ← same host path
+    depends_on:
+      - webserver

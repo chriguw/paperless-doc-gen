@@ -1,0 +1,17 @@
+# Git
+.git
+.gitignore
+
+# Reports
+reports/
+
+# Binaries
+bin/
+*.exe
+
+# IDE
+.vscode/
+.idea/
+
+# Env
+.env
