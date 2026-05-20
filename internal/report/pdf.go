@@ -149,29 +149,33 @@ func GeneratePDF(correspondentName string, outputPath string, years []string, ye
 		}
 
 		// ── Year total row ────────────────────────────────────────────────────
-		pdf.SetFont("DejaVu", "B", 7)
-		pdf.SetFillColor(100, 140, 210)
-		pdf.SetTextColor(255, 255, 255)
-		labelW := colID + colDate + colInvoice + colType
-		pdf.CellFormat(labelW, 7, fmt.Sprintf("  Total %s", year), "0", 0, "L", true, 0, "")
-		pdf.CellFormat(colAmount, 7, fmt.Sprintf("CHF %.2f", yearTotal), "0", 0, "R", true, 0, "")
-		if yearMissing > 0 {
-			pdf.CellFormat(colTitle, 7, fmt.Sprintf("  %d missing amount", yearMissing), "0", 1, "L", true, 0, "")
-		} else {
-			pdf.CellFormat(colTitle, 7, "", "0", 1, "L", true, 0, "")
+		if config.ShowTotals {
+			pdf.SetFont("DejaVu", "B", 7)
+			pdf.SetFillColor(100, 140, 210)
+			pdf.SetTextColor(255, 255, 255)
+			labelW := colID + colDate + colInvoice + colType
+			pdf.CellFormat(labelW, 7, fmt.Sprintf("  Total %s", year), "0", 0, "L", true, 0, "")
+			pdf.CellFormat(colAmount, 7, fmt.Sprintf("CHF %.2f", yearTotal), "0", 0, "R", true, 0, "")
+			if yearMissing > 0 {
+				pdf.CellFormat(colTitle, 7, fmt.Sprintf("  %d missing amount", yearMissing), "0", 1, "L", true, 0, "")
+			} else {
+				pdf.CellFormat(colTitle, 7, "", "0", 1, "L", true, 0, "")
+			}
+			pdf.SetTextColor(30, 30, 30)
 		}
-		pdf.SetTextColor(30, 30, 30)
 		pdf.Ln(4)
 	}
 
 	// ── Grand total ──────────────────────────────────────────────────────────
-	pdf.SetFont("DejaVu", "B", 9)
-	pdf.SetFillColor(70, 110, 180)
-	pdf.SetTextColor(255, 255, 255)
-	labelW := colID + colDate + colInvoice + colType
-	pdf.CellFormat(labelW, 9, "  Grand Total", "0", 0, "L", true, 0, "")
-	pdf.CellFormat(colAmount, 9, fmt.Sprintf("CHF %.2f", totalAll), "0", 0, "R", true, 0, "")
-	pdf.CellFormat(colTitle, 9, fmt.Sprintf("  %d documents  |  %d missing amount", totalDocs, missingAll), "0", 1, "L", true, 0, "")
+	if config.ShowTotals {
+		pdf.SetFont("DejaVu", "B", 9)
+		pdf.SetFillColor(70, 110, 180)
+		pdf.SetTextColor(255, 255, 255)
+		labelW := colID + colDate + colInvoice + colType
+		pdf.CellFormat(labelW, 9, "  Grand Total", "0", 0, "L", true, 0, "")
+		pdf.CellFormat(colAmount, 9, fmt.Sprintf("CHF %.2f", totalAll), "0", 0, "R", true, 0, "")
+		pdf.CellFormat(colTitle, 9, fmt.Sprintf("  %d documents  |  %d missing amount", totalDocs, missingAll), "0", 1, "L", true, 0, "")
+	}
 
 	return pdf.OutputFileAndClose(outputPath)
 }

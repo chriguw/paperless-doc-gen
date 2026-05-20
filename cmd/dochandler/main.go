@@ -162,9 +162,30 @@ func main() {
 	}
 	fmt.Printf("%d Dokumenttypen geladen.\n\n", len(docTypes))
 
+	// Build the list of correspondents to process
+	var correspondents []config.Correspondent
+
+	if config.AllCorrespondents {
+		fmt.Println("AllCorrespondents = true → lade alle Korrespondenten aus Paperless...\n")
+		all, err := api.FetchAllCorrespondents()
+		if err != nil {
+			log.Fatalf("Fehler beim Laden der Korrespondenten: %v", err)
+		}
+		for _, c := range all {
+			correspondents = append(correspondents, config.Correspondent{
+				Name: c.Name,
+				Slug: c.Slug,
+			})
+		}
+		fmt.Printf("%d Korrespondenten gefunden.\n\n", len(correspondents))
+	} else {
+		correspondents = config.Correspondents
+		fmt.Printf("Verwende %d konfigurierte Korrespondenten.\n\n", len(correspondents))
+	}
+
 	// Process each correspondent
 	errors := []string{}
-	for _, correspondent := range config.Correspondents {
+	for _, correspondent := range correspondents {
 		if err := processCorrespondent(correspondent, docTypes); err != nil {
 			fmt.Printf("⚠️  Fehler bei '%s': %v\n", correspondent.Name, err)
 			errors = append(errors, fmt.Sprintf("%s: %v", correspondent.Name, err))
@@ -175,7 +196,7 @@ func main() {
 	fmt.Printf("\n╔══════════════════════════════════════════════════════════════╗\n")
 	fmt.Printf("║  Zusammenfassung                                             ║\n")
 	fmt.Printf("╠══════════════════════════════════════════════════════════════╣\n")
-	fmt.Printf("║  %d Korrespondent(en) verarbeitet                             \n", len(config.Correspondents))
+	fmt.Printf("║  %d Korrespondent(en) verarbeitet                             \n", len(correspondents))
 	fmt.Printf("║  %d Fehler                                                    \n", len(errors))
 	for _, e := range errors {
 		fmt.Printf("║  ⚠️  %s\n", e)

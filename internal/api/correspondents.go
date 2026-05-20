@@ -35,3 +35,32 @@ func FindCorrespondentID(slug string) (int, error) {
 
 	return 0, fmt.Errorf("Korrespondent mit Slug '%s' nicht gefunden", slug)
 }
+
+func FetchAllCorrespondents() ([]model.Correspondent, error) {
+	var all []model.Correspondent
+	page := 1
+
+	for {
+		body, err := Get("/api/correspondents/", map[string]string{
+			"page":      fmt.Sprintf("%d", page),
+			"page_size": "100",
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		var list model.CorrespondentList
+		if err := json.Unmarshal(body, &list); err != nil {
+			return nil, err
+		}
+
+		all = append(all, list.Results...)
+
+		if list.Next == nil {
+			break
+		}
+		page++
+	}
+
+	return all, nil
+}

@@ -21,11 +21,14 @@ var Correspondents = []Correspondent{
 }
 
 const (
-	BaseURL              = "http://192.168.1.147:8001"   // Deine Paperless-NGX URL
-	APIToken             = "***************************" // Dein API Token
+	BaseURL              = "http://192.168.1.147:8001" // Deine Paperless-NGX URL
+	APIToken             = "*****"                     // Dein API Token
 	CustomFieldIDAmount  = 2
 	CustomFieldIDInvoice = 1
 	InvoiceOnly          = true
+	ShowTotals           = false // ← set to false to hide year and grand totals
+	AllCorrespondents    = true
+	CombinedPDF          = true
 	FontRegular          = "fonts/DejaVuSans.ttf"
 	FontBold             = "fonts/DejaVuSans-Bold.ttf"
 	ReportsDir           = "reports"
@@ -38,4 +41,8 @@ func OutputPDF(correspondentName string) string {
 // EnsureReportsDir creates the reports directory if it does not exist
 func EnsureReportsDir() error {
 	return os.MkdirAll(ReportsDir, 0755)
+}
+
+func CombinedOutputPDF() string {
+	return fmt.Sprintf("%s/Übersicht_AllCorrespondents.pdf", ReportsDir)
 }
