@@ -138,7 +138,7 @@ func WriteCorrespondentContent(pdf *gofpdf.Fpdf, req config.WebhookRequest, corr
 			pdf.SetTextColor(60, 60, 60)
 
 			// ── ID cell with clickable link ───────────────────────────────────
-			docURL := fmt.Sprintf("%s/documents/%d/details", config.BaseURL(), e.Doc.ID)
+			docURL := fmt.Sprintf("%s/documents/%d/details", config.DocURL(), e.Doc.ID)
 			x := pdf.GetX()
 			y := pdf.GetY()
 			pdf.SetTextColor(70, 110, 180)

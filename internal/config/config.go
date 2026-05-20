@@ -39,6 +39,15 @@ func BaseURL() string {
 	return url
 }
 
+// DocURL returns the Paperless-NGX document URL from environment
+func DocURL() string {
+	url := os.Getenv("PAPERLESS_DOC_URL")
+	if url == "" {
+		panic("PAPERLESS_URL environment variable is not set")
+	}
+	return url
+}
+
 // APIToken returns the Paperless-NGX API token from environment
 func APIToken() string {
 	token := os.Getenv("PAPERLESS_TOKEN")

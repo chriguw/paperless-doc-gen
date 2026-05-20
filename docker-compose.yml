@@ -9,6 +9,7 @@ services:
       - "8080:8080"
     environment:
       - PAPERLESS_URL=http://webserver:8000
+      - PAPERLESS_DOC_URL=http://192.178.1.10:8001
       - PAPERLESS_TOKEN=your-api-token-here
     volumes:
       - /Users/yourpath/paperless/data/paperless/consume:/app/reports  # ← same host path
