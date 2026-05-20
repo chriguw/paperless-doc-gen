@@ -123,6 +123,15 @@ services:
 
 ### Integration into Paperless docker-compose.yml
 
+> [!WARNING]
+> **Do NOT replace your existing `docker-compose.yml`!**
+> The example below only shows the **`dochandler` service block** that needs to be **added** to your existing file.
+> Replacing your entire `docker-compose.yml` will destroy your existing Paperless configuration and may result in **data loss**.
+> Always make a **backup** of your existing `docker-compose.yml` before making any changes.
+
+
+
+
 Add the `dochandler` service to your existing Paperless `docker-compose.yml`:
 
 ```yaml
