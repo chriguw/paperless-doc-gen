@@ -7,8 +7,8 @@ import (
 	"dochandler/internal/model"
 )
 
-func FindCorrespondentID(slug string) (int, error) {
-	body, err := Get("/api/correspondents/", map[string]string{
+func FindCorrespondentID(baseURL string, apiToken string, slug string) (int, error) {
+	body, err := Get(baseURL, apiToken, "/api/correspondents/", map[string]string{
 		"slug":      slug,
 		"page_size": "100",
 	})
@@ -27,7 +27,6 @@ func FindCorrespondentID(slug string) (int, error) {
 		}
 	}
 
-	// Debug output
 	fmt.Println("Gefundene Korrespondenten:")
 	for _, c := range list.Results {
 		fmt.Printf("  ID: %d  Slug: %q  Name: %q\n", c.ID, c.Slug, c.Name)
@@ -36,12 +35,12 @@ func FindCorrespondentID(slug string) (int, error) {
 	return 0, fmt.Errorf("Korrespondent mit Slug '%s' nicht gefunden", slug)
 }
 
-func FetchAllCorrespondents() ([]model.Correspondent, error) {
+func FetchAllCorrespondents(baseURL string, apiToken string) ([]model.Correspondent, error) {
 	var all []model.Correspondent
 	page := 1
 
 	for {
-		body, err := Get("/api/correspondents/", map[string]string{
+		body, err := Get(baseURL, apiToken, "/api/correspondents/", map[string]string{
 			"page":      fmt.Sprintf("%d", page),
 			"page_size": "100",
 		})

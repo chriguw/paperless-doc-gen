@@ -55,7 +55,7 @@ func NewPDF(footerText string) (*gofpdf.Fpdf, error) {
 }
 
 // WriteCorrespondentContent writes one correspondent's content into an existing PDF
-func WriteCorrespondentContent(pdf *gofpdf.Fpdf, correspondentName string, years []string, yearMap map[string][]model.DocEntry, totalAll float64, totalDocs int, missingAll int) {
+func WriteCorrespondentContent(pdf *gofpdf.Fpdf, req config.WebhookRequest, correspondentName string, years []string, yearMap map[string][]model.DocEntry, totalAll float64, totalDocs int, missingAll int) {
 	// ── Title ────────────────────────────────────────────────────────────────
 	pdf.SetFont("DejaVu", "B", 20)
 	pdf.SetTextColor(30, 30, 30)
@@ -65,7 +65,7 @@ func WriteCorrespondentContent(pdf *gofpdf.Fpdf, correspondentName string, years
 	pdf.SetFont("DejaVu", "", 9)
 	pdf.SetTextColor(120, 120, 120)
 	filterText := "All documents"
-	if config.InvoiceOnly {
+	if req.InvoiceOnly {
 		filterText = "Invoices only"
 	}
 	pdf.CellFormat(0, 6, fmt.Sprintf("%s  |  %d documents  |  %d missing amount", filterText, totalDocs, missingAll), "", 1, "L", false, 0, "")
@@ -138,7 +138,7 @@ func WriteCorrespondentContent(pdf *gofpdf.Fpdf, correspondentName string, years
 			pdf.SetTextColor(60, 60, 60)
 
 			// ── ID cell with clickable link ───────────────────────────────────
-			docURL := fmt.Sprintf("%s/documents/%d/details", config.BaseURL, e.Doc.ID)
+			docURL := fmt.Sprintf("%s/documents/%d/details", config.BaseURL(), e.Doc.ID)
 			x := pdf.GetX()
 			y := pdf.GetY()
 			pdf.SetTextColor(70, 110, 180)
@@ -157,7 +157,7 @@ func WriteCorrespondentContent(pdf *gofpdf.Fpdf, correspondentName string, years
 		}
 
 		// ── Year total row ────────────────────────────────────────────────────
-		if config.ShowTotals {
+		if req.ShowTotals {
 			pdf.SetFont("DejaVu", "B", 7)
 			pdf.SetFillColor(100, 140, 210)
 			pdf.SetTextColor(255, 255, 255)
@@ -175,7 +175,7 @@ func WriteCorrespondentContent(pdf *gofpdf.Fpdf, correspondentName string, years
 	}
 
 	// ── Grand total ──────────────────────────────────────────────────────────
-	if config.ShowTotals {
+	if req.ShowTotals {
 		pdf.SetFont("DejaVu", "B", 9)
 		pdf.SetFillColor(70, 110, 180)
 		pdf.SetTextColor(255, 255, 255)
@@ -186,7 +186,7 @@ func WriteCorrespondentContent(pdf *gofpdf.Fpdf, correspondentName string, years
 	}
 
 	// ── Document count footer row ─────────────────────────────────────────────
-	if config.ShowFooterRow {
+	if req.ShowFooterRow {
 		pdf.SetFont("DejaVu", "", 8)
 		pdf.SetFillColor(240, 240, 240)
 		pdf.SetTextColor(80, 80, 80)
@@ -211,63 +211,12 @@ func WriteCorrespondentContent(pdf *gofpdf.Fpdf, correspondentName string, years
 		pdf.SetTextColor(30, 30, 30)
 		pdf.CellFormat(colTitle, 6, fmt.Sprintf("  CHF %.2f", totalAll), "0", 1, "L", true, 0, "")
 	}
-
-}
-
-// GeneratePDF generates a single PDF for one correspondent
-func GeneratePDF(correspondentName string, outputPath string, years []string, yearMap map[string][]model.DocEntry, totalAll float64, totalDocs int, missingAll int) error {
-	pdf, err := NewPDF("Übersicht " + correspondentName)
-	if err != nil {
-		return err
-	}
-
-	pdf.AddPage()
-	WriteCorrespondentContent(pdf, correspondentName, years, yearMap, totalAll, totalDocs, missingAll)
-
-	return pdf.OutputFileAndClose(outputPath)
-}
-
-// CombinedPDFWriter holds a PDF instance for writing multiple correspondents
-type CombinedPDFWriter struct {
-	pdf       *gofpdf.Fpdf
-	summaries []CorrespondentSummary // ← collect summaries
-}
-
-// NewCombinedPDFWriter creates a new combined PDF writer
-func NewCombinedPDFWriter() (*CombinedPDFWriter, error) {
-	pdf, err := NewPDF("Übersicht All Correspondents")
-	if err != nil {
-		return nil, err
-	}
-	return &CombinedPDFWriter{pdf: pdf}, nil
-}
-
-// AddCorrespondent adds a correspondent on a new page to the combined PDF
-func (w *CombinedPDFWriter) AddCorrespondent(correspondentName string, years []string, yearMap map[string][]model.DocEntry, totalAll float64, totalDocs int, missingAll int) {
-	w.pdf.AddPage()
-	WriteCorrespondentContent(w.pdf, correspondentName, years, yearMap, totalAll, totalDocs, missingAll)
-
-	// ← collect summary
-	w.summaries = append(w.summaries, CorrespondentSummary{
-		Name:          correspondentName,
-		TotalDocs:     totalDocs,
-		MissingAmount: missingAll,
-		TotalAmount:   totalAll,
-	})
-}
-
-// Save writes the combined PDF to disk
-func (w *CombinedPDFWriter) Save() error {
-	// ← write grand summary page at the end
-	WriteGrandSummary(w.pdf, w.summaries)
-	return w.pdf.OutputFileAndClose(config.CombinedOutputPDF())
 }
 
 // WriteGrandSummary writes a final summary page with totals across all correspondents
 func WriteGrandSummary(pdf *gofpdf.Fpdf, summaries []CorrespondentSummary) {
 	pdf.AddPage()
 
-	// ── Title ────────────────────────────────────────────────────────────────
 	pdf.SetFont("DejaVu", "B", 20)
 	pdf.SetTextColor(30, 30, 30)
 	pdf.CellFormat(0, 12, "Gesamtübersicht aller Korrespondenten", "", 1, "L", false, 0, "")
@@ -276,13 +225,11 @@ func WriteGrandSummary(pdf *gofpdf.Fpdf, summaries []CorrespondentSummary) {
 	pdf.CellFormat(0, 6, fmt.Sprintf("%d Korrespondenten", len(summaries)), "", 1, "L", false, 0, "")
 	pdf.Ln(4)
 
-	// ── Column widths ────────────────────────────────────────────────────────
 	colName := 80.0
 	colDocs := 30.0
 	colMissing := 30.0
 	colAmount := 46.0
 
-	// ── Table header ─────────────────────────────────────────────────────────
 	pdf.SetFont("DejaVu", "B", 8)
 	pdf.SetFillColor(100, 140, 210)
 	pdf.SetTextColor(255, 255, 255)
@@ -292,7 +239,6 @@ func WriteGrandSummary(pdf *gofpdf.Fpdf, summaries []CorrespondentSummary) {
 	pdf.CellFormat(colAmount, 8, "Betrag", "0", 1, "R", true, 0, "")
 	pdf.SetTextColor(30, 30, 30)
 
-	// ── Rows ─────────────────────────────────────────────────────────────────
 	grandTotalDocs := 0
 	grandTotalMissing := 0
 	grandTotalAmount := 0.0
@@ -309,7 +255,6 @@ func WriteGrandSummary(pdf *gofpdf.Fpdf, summaries []CorrespondentSummary) {
 		pdf.CellFormat(colName, 7, "  "+s.Name, "0", 0, "L", true, 0, "")
 		pdf.CellFormat(colDocs, 7, fmt.Sprintf("%d", s.TotalDocs), "0", 0, "C", true, 0, "")
 
-		// Missing in red if > 0
 		if s.MissingAmount > 0 {
 			pdf.SetTextColor(200, 60, 60)
 			pdf.SetFont("DejaVu", "B", 8)
@@ -317,7 +262,6 @@ func WriteGrandSummary(pdf *gofpdf.Fpdf, summaries []CorrespondentSummary) {
 		pdf.CellFormat(colMissing, 7, fmt.Sprintf("%d", s.MissingAmount), "0", 0, "C", true, 0, "")
 		pdf.SetTextColor(60, 60, 60)
 		pdf.SetFont("DejaVu", "", 8)
-
 		pdf.CellFormat(colAmount, 7, fmt.Sprintf("CHF %.2f", s.TotalAmount), "0", 1, "R", true, 0, "")
 
 		grandTotalDocs += s.TotalDocs
@@ -325,7 +269,6 @@ func WriteGrandSummary(pdf *gofpdf.Fpdf, summaries []CorrespondentSummary) {
 		grandTotalAmount += s.TotalAmount
 	}
 
-	// ── Grand total row ───────────────────────────────────────────────────────
 	pdf.SetFont("DejaVu", "B", 9)
 	pdf.SetFillColor(70, 110, 180)
 	pdf.SetTextColor(255, 255, 255)
@@ -334,4 +277,49 @@ func WriteGrandSummary(pdf *gofpdf.Fpdf, summaries []CorrespondentSummary) {
 	pdf.CellFormat(colDocs, 9, fmt.Sprintf("%d", grandTotalDocs), "0", 0, "C", true, 0, "")
 	pdf.CellFormat(colMissing, 9, fmt.Sprintf("%d", grandTotalMissing), "0", 0, "C", true, 0, "")
 	pdf.CellFormat(colAmount, 9, fmt.Sprintf("CHF %.2f", grandTotalAmount), "0", 1, "R", true, 0, "")
+}
+
+// GeneratePDF generates a single PDF for one correspondent
+func GeneratePDF(req config.WebhookRequest, correspondentName string, outputPath string, years []string, yearMap map[string][]model.DocEntry, totalAll float64, totalDocs int, missingAll int) error {
+	pdf, err := NewPDF("Übersicht " + correspondentName)
+	if err != nil {
+		return err
+	}
+	pdf.AddPage()
+	WriteCorrespondentContent(pdf, req, correspondentName, years, yearMap, totalAll, totalDocs, missingAll)
+	return pdf.OutputFileAndClose(outputPath)
+}
+
+// CombinedPDFWriter holds a PDF instance for writing multiple correspondents
+type CombinedPDFWriter struct {
+	pdf       *gofpdf.Fpdf
+	req       config.WebhookRequest
+	summaries []CorrespondentSummary
+}
+
+// NewCombinedPDFWriter creates a new combined PDF writer
+func NewCombinedPDFWriter(req config.WebhookRequest) (*CombinedPDFWriter, error) {
+	pdf, err := NewPDF("Übersicht All Correspondents")
+	if err != nil {
+		return nil, err
+	}
+	return &CombinedPDFWriter{pdf: pdf, req: req}, nil
+}
+
+// AddCorrespondent adds a correspondent on a new page to the combined PDF
+func (w *CombinedPDFWriter) AddCorrespondent(correspondentName string, years []string, yearMap map[string][]model.DocEntry, totalAll float64, totalDocs int, missingAll int) {
+	w.pdf.AddPage()
+	WriteCorrespondentContent(w.pdf, w.req, correspondentName, years, yearMap, totalAll, totalDocs, missingAll)
+	w.summaries = append(w.summaries, CorrespondentSummary{
+		Name:          correspondentName,
+		TotalDocs:     totalDocs,
+		MissingAmount: missingAll,
+		TotalAmount:   totalAll,
+	})
+}
+
+// Save writes the combined PDF to disk
+func (w *CombinedPDFWriter) Save() error {
+	WriteGrandSummary(w.pdf, w.summaries)
+	return w.pdf.OutputFileAndClose(config.CombinedOutputPDF())
 }

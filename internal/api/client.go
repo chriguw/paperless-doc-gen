@@ -5,12 +5,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-
-	"dochandler/internal/config"
 )
 
-func Get(path string, queryParams map[string]string) ([]byte, error) {
-	u, err := url.Parse(config.BaseURL + path)
+func Get(baseURL string, apiToken string, path string, queryParams map[string]string) ([]byte, error) {
+	u, err := url.Parse(baseURL + path)
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +23,7 @@ func Get(path string, queryParams map[string]string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Token "+config.APIToken)
+	req.Header.Set("Authorization", "Token "+apiToken)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)

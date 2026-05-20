@@ -1,14 +1,17 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"sort"
+	"strings"
+
 	"dochandler/internal/api"
 	"dochandler/internal/config"
 	"dochandler/internal/model"
 	"dochandler/internal/report"
-	"fmt"
-	"log"
-	"sort"
-	"strings"
 )
 
 func getYear(created string) string {
@@ -34,8 +37,7 @@ func getCustomFieldValue(doc model.Document, fieldID int) string {
 	return ""
 }
 
-// buildYearMap groups documents by year and returns years, yearMap and totals
-func buildYearMap(docs []model.Document, docTypes map[int]string) ([]string, map[string][]model.DocEntry, float64, int, int) {
+func buildYearMap(req config.WebhookRequest, docs []model.Document, docTypes map[int]string) ([]string, map[string][]model.DocEntry, float64, int, int) {
 	yearMap := make(map[string][]model.DocEntry)
 
 	for _, doc := range docs {
@@ -46,7 +48,7 @@ func buildYearMap(docs []model.Document, docTypes map[int]string) ([]string, map
 			}
 		}
 
-		if config.InvoiceOnly && !isRechnung(docTypeName) {
+		if req.InvoiceOnly && !isRechnung(docTypeName) {
 			continue
 		}
 
@@ -55,21 +57,19 @@ func buildYearMap(docs []model.Document, docTypes map[int]string) ([]string, map
 			Doc:           doc,
 			Year:          year,
 			Date:          doc.Created[:10],
-			Amount:        getCustomFieldValue(doc, config.CustomFieldIDAmount),
-			InvoiceNumber: getCustomFieldValue(doc, config.CustomFieldIDInvoice),
+			Amount:        getCustomFieldValue(doc, req.CustomFieldIDAmount),
+			InvoiceNumber: getCustomFieldValue(doc, req.CustomFieldIDInvoice),
 			DocTypeName:   docTypeName,
 		}
 		yearMap[year] = append(yearMap[year], entry)
 	}
 
-	// Sort years
 	years := make([]string, 0, len(yearMap))
 	for y := range yearMap {
 		years = append(years, y)
 	}
 	sort.Strings(years)
 
-	// Sort entries within each year and calculate totals
 	totalAll := 0.0
 	missingAll := 0
 	totalDocs := 0
@@ -96,53 +96,46 @@ func buildYearMap(docs []model.Document, docTypes map[int]string) ([]string, map
 	return years, yearMap, totalAll, totalDocs, missingAll
 }
 
-// printTerminalTable prints the document table to the terminal
-func printTerminalTable(correspondent config.Correspondent, years []string, yearMap map[string][]model.DocEntry, totalAll float64, totalDocs int, missingAll int) {
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Printf("%-6s  %-12s  %-16s  %-14s  %-16s  %s\n", "ID", "Datum", "Rechnungs-Nr.", "Betrag", "Dokumenttyp", "Titel")
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	for _, year := range years {
-		fmt.Printf("\n── %s ──\n", year)
-		for _, e := range yearMap[year] {
-			inv := e.InvoiceNumber
-			if inv == "" {
-				inv = "-"
-			}
-			amt := "-"
-			if e.Amount != "" {
-				if val, ok := report.ParseAmount(e.Amount); ok {
-					amt = fmt.Sprintf("CHF %8.2f", val)
-				}
-			}
-			fmt.Printf("%-6d  %-12s  %-16s  %-14s  %-16s  %s\n", e.Doc.ID, e.Date, inv, amt, e.DocTypeName, e.Doc.Title)
-		}
+func handleWebhook(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "only POST allowed", http.StatusMethodNotAllowed)
+		return
 	}
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Printf("Gesamttotal: CHF %.2f  |  %d Dokument(e)  |  %d ohne Betrag\n", totalAll, totalDocs, missingAll)
-}
 
-func main() {
+	// Parse request body
+	var req config.WebhookRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	baseURL := config.BaseURL()
+	apiToken := config.APIToken()
+
+	log.Printf("📥 Webhook received — AllCorrespondents: %v  CombinedPDF: %v  InvoiceOnly: %v\n",
+		req.AllCorrespondents, req.CombinedPDF, req.InvoiceOnly)
+
 	// Ensure reports directory exists
 	if err := config.EnsureReportsDir(); err != nil {
-		log.Fatalf("Fehler beim Erstellen des Reports-Ordners: %v", err)
+		http.Error(w, fmt.Sprintf("reports dir error: %v", err), http.StatusInternalServerError)
+		return
 	}
-	fmt.Printf("📁 Reports werden gespeichert in: %s/\n\n", config.ReportsDir)
 
-	// Load document types once for all correspondents
-	fmt.Println("Lade Dokumenttypen...")
-	docTypes, err := api.FetchDocumentTypes()
+	// Load document types
+	docTypes, err := api.FetchDocumentTypes(baseURL, apiToken)
 	if err != nil {
-		log.Fatalf("Fehler beim Laden der Dokumenttypen: %v", err)
+		http.Error(w, fmt.Sprintf("error fetching document types: %v", err), http.StatusInternalServerError)
+		return
 	}
-	fmt.Printf("%d Dokumenttypen geladen.\n\n", len(docTypes))
+	log.Printf("📂 %d document types loaded\n", len(docTypes))
 
-	// Build the list of correspondents to process
+	// Build correspondent list
 	var correspondents []config.Correspondent
-	if config.AllCorrespondents {
-		fmt.Println("AllCorrespondents = true → lade alle Korrespondenten aus Paperless...\n")
-		all, err := api.FetchAllCorrespondents()
+	if req.AllCorrespondents {
+		all, err := api.FetchAllCorrespondents(baseURL, apiToken)
 		if err != nil {
-			log.Fatalf("Fehler beim Laden der Korrespondenten: %v", err)
+			http.Error(w, fmt.Sprintf("error fetching correspondents: %v", err), http.StatusInternalServerError)
+			return
 		}
 		for _, c := range all {
 			correspondents = append(correspondents, config.Correspondent{
@@ -150,88 +143,120 @@ func main() {
 				Slug: c.Slug,
 			})
 		}
-		fmt.Printf("%d Korrespondenten gefunden.\n\n", len(correspondents))
+		log.Printf("📋 %d correspondents fetched from Paperless\n", len(correspondents))
 	} else {
-		correspondents = config.Correspondents
-		fmt.Printf("Verwende %d konfigurierte Korrespondenten.\n\n", len(correspondents))
+		correspondents = req.Correspondents
+		log.Printf("📋 %d correspondents from request\n", len(correspondents))
 	}
 
 	// Create combined PDF writer if needed
 	var combinedWriter *report.CombinedPDFWriter
-	if config.CombinedPDF {
-		combinedWriter, err = report.NewCombinedPDFWriter()
+	if req.CombinedPDF {
+		combinedWriter, err = report.NewCombinedPDFWriter(req)
 		if err != nil {
-			log.Fatalf("Fehler beim Erstellen des kombinierten PDFs: %v", err)
+			http.Error(w, fmt.Sprintf("error creating combined PDF: %v", err), http.StatusInternalServerError)
+			return
 		}
-		fmt.Printf("📄 Kombiniertes PDF wird erstellt: %s\n\n", config.CombinedOutputPDF())
 	}
 
 	// Process each correspondent
-	errors := []string{}
+	type result struct {
+		Name    string  `json:"name"`
+		Docs    int     `json:"docs"`
+		Missing int     `json:"missing"`
+		Amount  float64 `json:"amount"`
+		PDF     string  `json:"pdf,omitempty"`
+		Error   string  `json:"error,omitempty"`
+	}
+	var results []result
+	var errors []string
+
 	for _, correspondent := range correspondents {
-		fmt.Printf("\n╔══════════════════════════════════════════════════════════════╗\n")
-		fmt.Printf("║  Korrespondent: %-45s ║\n", correspondent.Name)
-		fmt.Printf("╚══════════════════════════════════════════════════════════════╝\n\n")
+		log.Printf("🔄 Processing: %s\n", correspondent.Name)
 
-		// Fetch documents
-		corrID, err := api.FindCorrespondentID(correspondent.Slug)
+		corrID, err := api.FindCorrespondentID(baseURL, apiToken, correspondent.Slug)
 		if err != nil {
-			fmt.Printf("⚠️  Fehler bei '%s': %v\n", correspondent.Name, err)
-			errors = append(errors, fmt.Sprintf("%s: %v", correspondent.Name, err))
+			msg := fmt.Sprintf("%s: %v", correspondent.Name, err)
+			errors = append(errors, msg)
+			results = append(results, result{Name: correspondent.Name, Error: msg})
 			continue
 		}
-		fmt.Printf("Korrespondent gefunden: ID %d\n\n", corrID)
 
-		docs, err := api.FetchAllDocuments(corrID)
+		docs, err := api.FetchAllDocuments(baseURL, apiToken, corrID)
 		if err != nil {
-			fmt.Printf("⚠️  Fehler bei '%s': %v\n", correspondent.Name, err)
-			errors = append(errors, fmt.Sprintf("%s: %v", correspondent.Name, err))
+			msg := fmt.Sprintf("%s: %v", correspondent.Name, err)
+			errors = append(errors, msg)
+			results = append(results, result{Name: correspondent.Name, Error: msg})
 			continue
 		}
-		fmt.Printf("%d Dokumente gefunden.\n\n", len(docs))
 
-		// Build year map and totals
-		years, yearMap, totalAll, totalDocs, missingAll := buildYearMap(docs, docTypes)
+		years, yearMap, totalAll, totalDocs, missingAll := buildYearMap(req, docs, docTypes)
 
-		// Print terminal table
-		printTerminalTable(correspondent, years, yearMap, totalAll, totalDocs, missingAll)
-
-		if config.CombinedPDF {
-			// Add to combined PDF
+		if req.CombinedPDF {
 			combinedWriter.AddCorrespondent(correspondent.Name, years, yearMap, totalAll, totalDocs, missingAll)
+			results = append(results, result{
+				Name:    correspondent.Name,
+				Docs:    totalDocs,
+				Missing: missingAll,
+				Amount:  totalAll,
+			})
 		} else {
-			// Generate individual PDF
 			outputPDF := config.OutputPDF(correspondent.Name)
-			fmt.Printf("\nGeneriere PDF '%s'...\n", outputPDF)
-			if err := report.GeneratePDF(correspondent.Name, outputPDF, years, yearMap, totalAll, totalDocs, missingAll); err != nil {
-				fmt.Printf("⚠️  Fehler bei '%s': %v\n", correspondent.Name, err)
-				errors = append(errors, fmt.Sprintf("%s: %v", correspondent.Name, err))
+			if err := report.GeneratePDF(req, correspondent.Name, outputPDF, years, yearMap, totalAll, totalDocs, missingAll); err != nil {
+				msg := fmt.Sprintf("%s: %v", correspondent.Name, err)
+				errors = append(errors, msg)
+				results = append(results, result{Name: correspondent.Name, Error: msg})
 				continue
 			}
-			fmt.Printf("✅ PDF erfolgreich gespeichert: %s\n", outputPDF)
+			results = append(results, result{
+				Name:    correspondent.Name,
+				Docs:    totalDocs,
+				Missing: missingAll,
+				Amount:  totalAll,
+				PDF:     outputPDF,
+			})
+			log.Printf("✅ PDF saved: %s\n", outputPDF)
 		}
 	}
 
-	// Save combined PDF if needed
-	if config.CombinedPDF {
-		fmt.Printf("\nSpeichere kombiniertes PDF '%s'...\n", config.CombinedOutputPDF())
+	// Save combined PDF
+	if req.CombinedPDF {
 		if err := combinedWriter.Save(); err != nil {
-			log.Fatalf("Fehler beim Speichern des kombinierten PDFs: %v", err)
+			http.Error(w, fmt.Sprintf("error saving combined PDF: %v", err), http.StatusInternalServerError)
+			return
 		}
-		fmt.Printf("✅ Kombiniertes PDF erfolgreich gespeichert: %s\n", config.CombinedOutputPDF())
+		log.Printf("✅ Combined PDF saved: %s\n", config.CombinedOutputPDF())
 	}
 
-	// Summary
-	fmt.Printf("\n╔══════════════════════════════════════════════════════════════╗\n")
-	fmt.Printf("║  Zusammenfassung                                             ║\n")
-	fmt.Printf("╠══════════════════════════════════════════════════════════════╣\n")
-	fmt.Printf("║  %d Korrespondent(en) verarbeitet                             \n", len(correspondents))
-	if config.CombinedPDF {
-		fmt.Printf("║  📄 Kombiniertes PDF: %s\n", config.CombinedOutputPDF())
+	// Return JSON response
+	type response struct {
+		Status  string   `json:"status"`
+		PDF     string   `json:"pdf,omitempty"`
+		Results []result `json:"results"`
+		Errors  []string `json:"errors,omitempty"`
 	}
-	fmt.Printf("║  %d Fehler                                                    \n", len(errors))
-	for _, e := range errors {
-		fmt.Printf("║  ⚠️  %s\n", e)
+
+	resp := response{
+		Status:  "ok",
+		Results: results,
+		Errors:  errors,
 	}
-	fmt.Printf("╚══════════════════════════════════════════════════════════════╝\n")
+	if req.CombinedPDF {
+		resp.PDF = config.CombinedOutputPDF()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func main() {
+	// Validate env vars on startup
+	_ = config.BaseURL()
+	_ = config.APIToken()
+
+	http.HandleFunc("/webhook", handleWebhook)
+
+	log.Printf("🚀 dochandler webhook listening on %s\n", config.WebhookPort)
+	log.Printf("📡 POST http://localhost%s/webhook\n", config.WebhookPort)
+	log.Fatal(http.ListenAndServe(config.WebhookPort, nil))
 }

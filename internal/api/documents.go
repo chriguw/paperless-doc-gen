@@ -7,12 +7,12 @@ import (
 	"dochandler/internal/model"
 )
 
-func FetchAllDocuments(correspondentID int) ([]model.Document, error) {
+func FetchAllDocuments(baseURL string, apiToken string, correspondentID int) ([]model.Document, error) {
 	var allDocs []model.Document
 	page := 1
 
 	for {
-		body, err := Get("/api/documents/", map[string]string{
+		body, err := Get(baseURL, apiToken, "/api/documents/", map[string]string{
 			"correspondent__id": fmt.Sprintf("%d", correspondentID),
 			"page":              fmt.Sprintf("%d", page),
 			"page_size":         "100",
