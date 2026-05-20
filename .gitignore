@@ -1,0 +1,39 @@
+# ── Binaries ────────────────────────────────────────────────────────────────
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+dochandler
+
+# ── Build output ─────────────────────────────────────────────────────────────
+/bin/
+/dist/
+*.out
+
+# ── Go specific ──────────────────────────────────────────────────────────────
+vendor/
+go.sum
+
+# ── Generated reports ────────────────────────────────────────────────────────
+reports/
+
+# ── Fonts (optional: remove these lines if you want to commit the fonts) ─────
+# fonts/
+
+# ── IDE / Editor ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*.DS_Store
+
+# ── Environment / Secrets ────────────────────────────────────────────────────
+.env
+*.env
+config.local.go
+
+# ── Test cache ───────────────────────────────────────────────────────────────
+*.test
+*.prof
+/tmp/
