@@ -50,12 +50,12 @@ func APIToken() string {
 
 // OutputPDF returns the full path for the PDF report of a correspondent
 func OutputPDF(correspondentName string) string {
-	return fmt.Sprintf("%s/Übersicht_%s.pdf", ReportsDir, correspondentName)
+	return fmt.Sprintf("%s/Paperless_Correspondent_%s.pdf", ReportsDir, correspondentName)
 }
 
 // CombinedOutputPDF returns the full path for the combined PDF report
 func CombinedOutputPDF() string {
-	return fmt.Sprintf("%s/Übersicht_AllCorrespondents.pdf", ReportsDir)
+	return fmt.Sprintf("%s/Paperless_AllCorrespondents.pdf", ReportsDir)
 }
 
 // EnsureReportsDir creates the reports directory if it does not exist
