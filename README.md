@@ -105,18 +105,21 @@ The following environment variables **must** be set before starting the service:
 
 | Variable | Description | Example |
 |---|---|---|
-| `PAPERLESS_URL` | Base URL of your Paperless-NGX instance | `http://192.168.1.147:8001` |
+| `PAPERLESS_URL` | Base URL of your Paperless-NGX docker internal | `PAPERLESS_URL=http://webserver:8000` |
+| `PAPERLESS_DOC_URL` | Base URL of your Paperless-NGX instance for documents | `http://192.178.1.10:8001` |
 | `PAPERLESS_TOKEN` | API token for authentication | `abc123xyz...` |
 
 #### Set environment variables
 
 ```bash
 # Linux / macOS
-export PAPERLESS_URL="http://192.168.1.147:8001"
+export PAPERLESS_URL="http://webserver:8000"
+export PAPERLESS_DOC_URL="http://192.178.1.10:8001"
 export PAPERLESS_TOKEN="your-api-token-here"
 
 # Windows (PowerShell)
-$env:PAPERLESS_URL="http://192.168.1.147:8001"
+$env:PAPERLESS_URL="http://webserver:8000"
+$env:PAPERLESS_DOC_URL="http://192.178.1.10:8001"
 $env:PAPERLESS_TOKEN="your-api-token-here"
 ```
 
