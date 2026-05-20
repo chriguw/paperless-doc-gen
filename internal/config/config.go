@@ -22,10 +22,10 @@ var Correspondents = []Correspondent{
 
 const (
 	BaseURL              = "http://192.168.1.147:8001" // Deine Paperless-NGX URL
-	APIToken             = "*****"                     // Dein API Token
+	APIToken             = "**"                        // Dein API Token
 	CustomFieldIDAmount  = 2
 	CustomFieldIDInvoice = 1
-	InvoiceOnly          = true
+	InvoiceOnly          = false
 	ShowTotals           = false // ← set to false to hide year and grand totals
 	AllCorrespondents    = true
 	CombinedPDF          = true

@@ -34,30 +34,10 @@ func getCustomFieldValue(doc model.Document, fieldID int) string {
 	return ""
 }
 
-func processCorrespondent(correspondent config.Correspondent, docTypes map[int]string) error {
-	fmt.Printf("\n╔══════════════════════════════════════════════════════════════╗\n")
-	fmt.Printf("║  Korrespondent: %-45s ║\n", correspondent.Name)
-	fmt.Printf("╚══════════════════════════════════════════════════════════════╝\n\n")
-
-	corrID, err := api.FindCorrespondentID(correspondent.Slug)
-	if err != nil {
-		return fmt.Errorf("Korrespondent '%s' nicht gefunden: %w", correspondent.Name, err)
-	}
-	fmt.Printf("Korrespondent gefunden: ID %d\n\n", corrID)
-
-	fmt.Println("Lade Dokumente...")
-	docs, err := api.FetchAllDocuments(corrID)
-	if err != nil {
-		return fmt.Errorf("Fehler beim Laden der Dokumente: %w", err)
-	}
-	fmt.Printf("%d Dokumente gefunden.\n\n", len(docs))
-
-	if config.InvoiceOnly {
-		fmt.Println("⚠️  InvoiceOnly = true → nur Dokumente vom Typ 'Rechnung' werden angezeigt.\n")
-	}
-
-	// --- Dokumente nach Jahr gruppieren ---
+// buildYearMap groups documents by year and returns years, yearMap and totals
+func buildYearMap(docs []model.Document, docTypes map[int]string) ([]string, map[string][]model.DocEntry, float64, int, int) {
 	yearMap := make(map[string][]model.DocEntry)
+
 	for _, doc := range docs {
 		docTypeName := "-"
 		if doc.DocumentType != nil {
@@ -82,14 +62,14 @@ func processCorrespondent(correspondent config.Correspondent, docTypes map[int]s
 		yearMap[year] = append(yearMap[year], entry)
 	}
 
-	// --- Jahre sortieren ---
+	// Sort years
 	years := make([]string, 0, len(yearMap))
 	for y := range yearMap {
 		years = append(years, y)
 	}
 	sort.Strings(years)
 
-	// --- Totals berechnen & Einträge sortieren ---
+	// Sort entries within each year and calculate totals
 	totalAll := 0.0
 	missingAll := 0
 	totalDocs := 0
@@ -113,7 +93,11 @@ func processCorrespondent(correspondent config.Correspondent, docTypes map[int]s
 		totalDocs += len(entries)
 	}
 
-	// --- Terminal Ausgabe ---
+	return years, yearMap, totalAll, totalDocs, missingAll
+}
+
+// printTerminalTable prints the document table to the terminal
+func printTerminalTable(correspondent config.Correspondent, years []string, yearMap map[string][]model.DocEntry, totalAll float64, totalDocs int, missingAll int) {
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Printf("%-6s  %-12s  %-16s  %-14s  %-16s  %s\n", "ID", "Datum", "Rechnungs-Nr.", "Betrag", "Dokumenttyp", "Titel")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -135,16 +119,6 @@ func processCorrespondent(correspondent config.Correspondent, docTypes map[int]s
 	}
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Printf("Gesamttotal: CHF %.2f  |  %d Dokument(e)  |  %d ohne Betrag\n", totalAll, totalDocs, missingAll)
-
-	// --- PDF generieren ---
-	outputPDF := config.OutputPDF(correspondent.Name)
-	fmt.Printf("\nGeneriere PDF '%s'...\n", outputPDF)
-	if err := report.GeneratePDF(correspondent.Name, outputPDF, years, yearMap, totalAll, totalDocs, missingAll); err != nil {
-		return fmt.Errorf("Fehler beim PDF generieren: %w", err)
-	}
-	fmt.Printf("✅ PDF erfolgreich gespeichert: %s\n", outputPDF)
-
-	return nil
 }
 
 func main() {
@@ -164,7 +138,6 @@ func main() {
 
 	// Build the list of correspondents to process
 	var correspondents []config.Correspondent
-
 	if config.AllCorrespondents {
 		fmt.Println("AllCorrespondents = true → lade alle Korrespondenten aus Paperless...\n")
 		all, err := api.FetchAllCorrespondents()
@@ -183,13 +156,69 @@ func main() {
 		fmt.Printf("Verwende %d konfigurierte Korrespondenten.\n\n", len(correspondents))
 	}
 
+	// Create combined PDF writer if needed
+	var combinedWriter *report.CombinedPDFWriter
+	if config.CombinedPDF {
+		combinedWriter, err = report.NewCombinedPDFWriter()
+		if err != nil {
+			log.Fatalf("Fehler beim Erstellen des kombinierten PDFs: %v", err)
+		}
+		fmt.Printf("📄 Kombiniertes PDF wird erstellt: %s\n\n", config.CombinedOutputPDF())
+	}
+
 	// Process each correspondent
 	errors := []string{}
 	for _, correspondent := range correspondents {
-		if err := processCorrespondent(correspondent, docTypes); err != nil {
+		fmt.Printf("\n╔══════════════════════════════════════════════════════════════╗\n")
+		fmt.Printf("║  Korrespondent: %-45s ║\n", correspondent.Name)
+		fmt.Printf("╚══════════════════════════════════════════════════════════════╝\n\n")
+
+		// Fetch documents
+		corrID, err := api.FindCorrespondentID(correspondent.Slug)
+		if err != nil {
 			fmt.Printf("⚠️  Fehler bei '%s': %v\n", correspondent.Name, err)
 			errors = append(errors, fmt.Sprintf("%s: %v", correspondent.Name, err))
+			continue
 		}
+		fmt.Printf("Korrespondent gefunden: ID %d\n\n", corrID)
+
+		docs, err := api.FetchAllDocuments(corrID)
+		if err != nil {
+			fmt.Printf("⚠️  Fehler bei '%s': %v\n", correspondent.Name, err)
+			errors = append(errors, fmt.Sprintf("%s: %v", correspondent.Name, err))
+			continue
+		}
+		fmt.Printf("%d Dokumente gefunden.\n\n", len(docs))
+
+		// Build year map and totals
+		years, yearMap, totalAll, totalDocs, missingAll := buildYearMap(docs, docTypes)
+
+		// Print terminal table
+		printTerminalTable(correspondent, years, yearMap, totalAll, totalDocs, missingAll)
+
+		if config.CombinedPDF {
+			// Add to combined PDF
+			combinedWriter.AddCorrespondent(correspondent.Name, years, yearMap, totalAll, totalDocs, missingAll)
+		} else {
+			// Generate individual PDF
+			outputPDF := config.OutputPDF(correspondent.Name)
+			fmt.Printf("\nGeneriere PDF '%s'...\n", outputPDF)
+			if err := report.GeneratePDF(correspondent.Name, outputPDF, years, yearMap, totalAll, totalDocs, missingAll); err != nil {
+				fmt.Printf("⚠️  Fehler bei '%s': %v\n", correspondent.Name, err)
+				errors = append(errors, fmt.Sprintf("%s: %v", correspondent.Name, err))
+				continue
+			}
+			fmt.Printf("✅ PDF erfolgreich gespeichert: %s\n", outputPDF)
+		}
+	}
+
+	// Save combined PDF if needed
+	if config.CombinedPDF {
+		fmt.Printf("\nSpeichere kombiniertes PDF '%s'...\n", config.CombinedOutputPDF())
+		if err := combinedWriter.Save(); err != nil {
+			log.Fatalf("Fehler beim Speichern des kombinierten PDFs: %v", err)
+		}
+		fmt.Printf("✅ Kombiniertes PDF erfolgreich gespeichert: %s\n", config.CombinedOutputPDF())
 	}
 
 	// Summary
@@ -197,6 +226,9 @@ func main() {
 	fmt.Printf("║  Zusammenfassung                                             ║\n")
 	fmt.Printf("╠══════════════════════════════════════════════════════════════╣\n")
 	fmt.Printf("║  %d Korrespondent(en) verarbeitet                             \n", len(correspondents))
+	if config.CombinedPDF {
+		fmt.Printf("║  📄 Kombiniertes PDF: %s\n", config.CombinedOutputPDF())
+	}
 	fmt.Printf("║  %d Fehler                                                    \n", len(errors))
 	for _, e := range errors {
 		fmt.Printf("║  ⚠️  %s\n", e)
