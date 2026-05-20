@@ -21,8 +21,8 @@ var Correspondents = []Correspondent{
 }
 
 const (
-	BaseURL              = "http://192.168.1.147:8001"                // Deine Paperless-NGX URL
-	APIToken             = "47f183c4fb99f65851521bd9035c2c3cc23f6526" // Dein API Token
+	BaseURL              = "http://192.168.1.147:8001"   // Deine Paperless-NGX URL
+	APIToken             = "***************************" // Dein API Token
 	CustomFieldIDAmount  = 2
 	CustomFieldIDInvoice = 1
 	InvoiceOnly          = true
