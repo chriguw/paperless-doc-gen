@@ -209,6 +209,7 @@ services:
       - "8082:8080"
     environment:
       - PAPERLESS_URL=http://webserver:8000   # use the internal docker service name
+      - PAPERLESS_DOC_URL=http://192.178.1.25:8001 # use the real paperless ip, as the links in the docs are pointing to there
       - PAPERLESS_TOKEN=your-paperless-token
     volumes:
       - /Users/yourusername/paperless/data/paperless/consume:/app/reports     # reports are accessible on the host
