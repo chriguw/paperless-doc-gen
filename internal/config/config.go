@@ -27,6 +27,7 @@ const (
 	CustomFieldIDInvoice = 1
 	InvoiceOnly          = false
 	ShowTotals           = false // ← set to false to hide year and grand totals
+	ShowFooterRow        = true
 	AllCorrespondents    = true
 	CombinedPDF          = true
 	FontRegular          = "fonts/DejaVuSans.ttf"

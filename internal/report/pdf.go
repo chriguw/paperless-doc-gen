@@ -11,6 +11,14 @@ import (
 	"github.com/jung-kurt/gofpdf"
 )
 
+// CorrespondentSummary holds the totals for one correspondent
+type CorrespondentSummary struct {
+	Name          string
+	TotalDocs     int
+	MissingAmount int
+	TotalAmount   float64
+}
+
 func ParseAmount(raw string) (float64, bool) {
 	cleaned := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(raw), "CHF"))
 	if cleaned == "" {
@@ -176,6 +184,34 @@ func WriteCorrespondentContent(pdf *gofpdf.Fpdf, correspondentName string, years
 		pdf.CellFormat(colAmount, 9, fmt.Sprintf("CHF %.2f", totalAll), "0", 0, "R", true, 0, "")
 		pdf.CellFormat(colTitle, 9, fmt.Sprintf("  %d documents  |  %d missing amount", totalDocs, missingAll), "0", 1, "L", true, 0, "")
 	}
+
+	// ── Document count footer row ─────────────────────────────────────────────
+	if config.ShowFooterRow {
+		pdf.SetFont("DejaVu", "", 8)
+		pdf.SetFillColor(240, 240, 240)
+		pdf.SetTextColor(80, 80, 80)
+		pdf.Ln(2)
+		pdf.CellFormat(colID+colDate+colInvoice+colType+colAmount, 6, "  Total documents:", "0", 0, "L", true, 0, "")
+		pdf.SetFont("DejaVu", "B", 8)
+		pdf.CellFormat(colTitle, 6, fmt.Sprintf("  %d", totalDocs), "0", 1, "L", true, 0, "")
+
+		pdf.SetFont("DejaVu", "", 8)
+		pdf.SetTextColor(80, 80, 80)
+		pdf.CellFormat(colID+colDate+colInvoice+colType+colAmount, 6, "  Missing amount:", "0", 0, "L", true, 0, "")
+		pdf.SetFont("DejaVu", "B", 8)
+		if missingAll > 0 {
+			pdf.SetTextColor(200, 60, 60)
+		}
+		pdf.CellFormat(colTitle, 6, fmt.Sprintf("  %d", missingAll), "0", 1, "L", true, 0, "")
+		pdf.SetTextColor(80, 80, 80)
+
+		pdf.SetFont("DejaVu", "", 8)
+		pdf.CellFormat(colID+colDate+colInvoice+colType+colAmount, 6, "  Total amount:", "0", 0, "L", true, 0, "")
+		pdf.SetFont("DejaVu", "B", 8)
+		pdf.SetTextColor(30, 30, 30)
+		pdf.CellFormat(colTitle, 6, fmt.Sprintf("  CHF %.2f", totalAll), "0", 1, "L", true, 0, "")
+	}
+
 }
 
 // GeneratePDF generates a single PDF for one correspondent
@@ -193,7 +229,8 @@ func GeneratePDF(correspondentName string, outputPath string, years []string, ye
 
 // CombinedPDFWriter holds a PDF instance for writing multiple correspondents
 type CombinedPDFWriter struct {
-	pdf *gofpdf.Fpdf
+	pdf       *gofpdf.Fpdf
+	summaries []CorrespondentSummary // ← collect summaries
 }
 
 // NewCombinedPDFWriter creates a new combined PDF writer
@@ -209,9 +246,92 @@ func NewCombinedPDFWriter() (*CombinedPDFWriter, error) {
 func (w *CombinedPDFWriter) AddCorrespondent(correspondentName string, years []string, yearMap map[string][]model.DocEntry, totalAll float64, totalDocs int, missingAll int) {
 	w.pdf.AddPage()
 	WriteCorrespondentContent(w.pdf, correspondentName, years, yearMap, totalAll, totalDocs, missingAll)
+
+	// ← collect summary
+	w.summaries = append(w.summaries, CorrespondentSummary{
+		Name:          correspondentName,
+		TotalDocs:     totalDocs,
+		MissingAmount: missingAll,
+		TotalAmount:   totalAll,
+	})
 }
 
 // Save writes the combined PDF to disk
 func (w *CombinedPDFWriter) Save() error {
+	// ← write grand summary page at the end
+	WriteGrandSummary(w.pdf, w.summaries)
 	return w.pdf.OutputFileAndClose(config.CombinedOutputPDF())
+}
+
+// WriteGrandSummary writes a final summary page with totals across all correspondents
+func WriteGrandSummary(pdf *gofpdf.Fpdf, summaries []CorrespondentSummary) {
+	pdf.AddPage()
+
+	// ── Title ────────────────────────────────────────────────────────────────
+	pdf.SetFont("DejaVu", "B", 20)
+	pdf.SetTextColor(30, 30, 30)
+	pdf.CellFormat(0, 12, "Gesamtübersicht aller Korrespondenten", "", 1, "L", false, 0, "")
+	pdf.SetFont("DejaVu", "", 9)
+	pdf.SetTextColor(120, 120, 120)
+	pdf.CellFormat(0, 6, fmt.Sprintf("%d Korrespondenten", len(summaries)), "", 1, "L", false, 0, "")
+	pdf.Ln(4)
+
+	// ── Column widths ────────────────────────────────────────────────────────
+	colName := 80.0
+	colDocs := 30.0
+	colMissing := 30.0
+	colAmount := 46.0
+
+	// ── Table header ─────────────────────────────────────────────────────────
+	pdf.SetFont("DejaVu", "B", 8)
+	pdf.SetFillColor(100, 140, 210)
+	pdf.SetTextColor(255, 255, 255)
+	pdf.CellFormat(colName, 8, "  Korrespondent", "0", 0, "L", true, 0, "")
+	pdf.CellFormat(colDocs, 8, "Dokumente", "0", 0, "C", true, 0, "")
+	pdf.CellFormat(colMissing, 8, "Fehlend", "0", 0, "C", true, 0, "")
+	pdf.CellFormat(colAmount, 8, "Betrag", "0", 1, "R", true, 0, "")
+	pdf.SetTextColor(30, 30, 30)
+
+	// ── Rows ─────────────────────────────────────────────────────────────────
+	grandTotalDocs := 0
+	grandTotalMissing := 0
+	grandTotalAmount := 0.0
+
+	for i, s := range summaries {
+		if i%2 == 0 {
+			pdf.SetFillColor(245, 247, 252)
+		} else {
+			pdf.SetFillColor(255, 255, 255)
+		}
+
+		pdf.SetFont("DejaVu", "", 8)
+		pdf.SetTextColor(60, 60, 60)
+		pdf.CellFormat(colName, 7, "  "+s.Name, "0", 0, "L", true, 0, "")
+		pdf.CellFormat(colDocs, 7, fmt.Sprintf("%d", s.TotalDocs), "0", 0, "C", true, 0, "")
+
+		// Missing in red if > 0
+		if s.MissingAmount > 0 {
+			pdf.SetTextColor(200, 60, 60)
+			pdf.SetFont("DejaVu", "B", 8)
+		}
+		pdf.CellFormat(colMissing, 7, fmt.Sprintf("%d", s.MissingAmount), "0", 0, "C", true, 0, "")
+		pdf.SetTextColor(60, 60, 60)
+		pdf.SetFont("DejaVu", "", 8)
+
+		pdf.CellFormat(colAmount, 7, fmt.Sprintf("CHF %.2f", s.TotalAmount), "0", 1, "R", true, 0, "")
+
+		grandTotalDocs += s.TotalDocs
+		grandTotalMissing += s.MissingAmount
+		grandTotalAmount += s.TotalAmount
+	}
+
+	// ── Grand total row ───────────────────────────────────────────────────────
+	pdf.SetFont("DejaVu", "B", 9)
+	pdf.SetFillColor(70, 110, 180)
+	pdf.SetTextColor(255, 255, 255)
+	pdf.Ln(1)
+	pdf.CellFormat(colName, 9, "  Total", "0", 0, "L", true, 0, "")
+	pdf.CellFormat(colDocs, 9, fmt.Sprintf("%d", grandTotalDocs), "0", 0, "C", true, 0, "")
+	pdf.CellFormat(colMissing, 9, fmt.Sprintf("%d", grandTotalMissing), "0", 0, "C", true, 0, "")
+	pdf.CellFormat(colAmount, 9, fmt.Sprintf("CHF %.2f", grandTotalAmount), "0", 1, "R", true, 0, "")
 }
